@@ -1,0 +1,75 @@
+{
+  "$schema": "http://schemas.microsoft.org/azure/deploymentTemplate?api-version=2015-01-01-preview#",
+  "contentVersion": "1.0",
+  "parameters": {
+    "AutomationAccountName": {
+      "type": "string"
+    },
+    "Base64Value": {
+      "type": "string"
+    },
+    "Thumbprint": {
+      "type": "string"
+    },
+    "ApplicationId": {
+      "type": "string"
+    }
+  },
+  "variables": {
+    "CertificateName": "AzureRunAsCertificate",
+    "ConnectionName": "AzureRunAsConnection"
+  },
+  "resources": [
+    {
+      "type": "Microsoft.Automation/automationAccounts",
+      "name": "[parameters('AutomationAccountName')]",
+      "apiVersion": "2015-01-01-preview",
+      "location": "[resourceGroup().location]",
+      "tags": {},
+      "properties": {
+        "sku": {
+          "name": "Basic"
+        }
+      }
+    },
+    {
+      "name": "[concat(parameters('AutomationAccountName'), '/', variables('CertificateName'))]",
+      "type": "microsoft.automation/automationAccounts/certificates",
+      "apiVersion": "2015-01-01-preview",
+      "tags": {},
+      "properties": {
+        "base64Value": "[parameters('base64Value')]",
+        "thumbprint": "[parameters('thumbprint')]",
+        "IsExportable": true
+      },
+      "dependsOn": [
+        "[concat('Microsoft.Automation/automationAccounts/', parameters('AutomationAccountName'))]"
+      ]
+    },
+    {
+      "name": "[concat(parameters('AutomationAccountName'), '/', variables('ConnectionName'))]",
+      "type": "microsoft.automation/automationAccounts/connections",
+      "apiVersion": "2015-01-01-preview",
+      "tags": {},
+      "properties": {
+        "name": "[variables('ConnectionName')]",
+        "description": "[variables('ConnectionName')]",
+        "isGlobal": false,
+        "connectionType": {
+          "name": "AzureServicePrincipal"
+        },
+        "fieldDefinitionValues": {
+          "ApplicationId": "[parameters('ApplicationId')]",
+          "TenantId": "[subscription().tenantId]",
+          "CertificateThumbprint": "[parameters('thumbprint')]",
+          "SubscriptionID": "[subscription().subscriptionId]"
+        }
+      },
+      "dependsOn": [
+        "[concat('Microsoft.Automation/automationAccounts/', parameters('AutomationAccountName'))]",
+        "[concat('Microsoft.Automation/automationAccounts/', parameters('AutomationAccountName'),'/certificates/', variables('certificateName'))]"
+      ]
+
+    }
+  ]
+} 
