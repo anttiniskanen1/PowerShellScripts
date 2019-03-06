@@ -1,17 +1,17 @@
 {
   "$schema": "http://schemas.microsoft.org/azure/deploymentTemplate?api-version=2015-01-01-preview#",
-  "contentVersion": "1.0",
+  "contentVersion": "1.0.0.0",
   "parameters": {
     "AutomationAccountName": {
-      "type": "string"
-    },
-    "Base64Value": {
       "type": "string"
     },
     "Thumbprint": {
       "type": "string"
     },
     "ApplicationId": {
+      "type": "string"
+    },
+    "Base64Value": {
       "type": "string"
     }
   },
@@ -69,7 +69,6 @@
         "[concat('Microsoft.Automation/automationAccounts/', parameters('AutomationAccountName'))]",
         "[concat('Microsoft.Automation/automationAccounts/', parameters('AutomationAccountName'),'/certificates/', variables('certificateName'))]"
       ]
-
     }
   ]
 } 
