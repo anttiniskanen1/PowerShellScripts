@@ -1,5 +1,5 @@
 ﻿#Requires -RunAsAdministrator
- <#
+<#
 .SYNOPSIS
     This script can be used to create Azure Automation Run As Account using Power Shell and ARM Template.
     1) This script will create the AAD Application, AssignContributorRole 2) All other operations are in ARM Template.
