@@ -11,6 +11,7 @@
      Please use the below command to install the modules (if the modules are not in the local computer)
          Install-Module -Name AzureRM.Profile
          Install-Module -Name AzureRM.Automation
+         Install-Module -Name AzureRM.Resources
          Install-Module -Name AzureAD
 
 .DESCRIPTION
@@ -24,10 +25,8 @@
          b) Grant Owner to Run As Account AAD Service Principal.
          c) Assign the "Application.ReadWrite.OwnedBy" App Role to the Run As Account AAD Service Principal.
 
-    3. This script need to executed only once
-
-    4. Next script. To configure the Run As Account Renewal please use the below script
-        https://github.com/azureautomation/runbooks/blob/master/Utility/ARM/Update-AutomationRunAsCredential.ps1
+    3. To configure the Run As Account Renewal please use the Update-AutomationRunAsCredential.ps1 script
+        Scirpt link: https://github.com/azureautomation/runbooks/blob/master/Utility/ARM/Update-AutomationRunAsCredential.ps1
     
 .USAGE
     .\GrantPermission-ToRunAsAccountAADApplication-ToRenewCertificateItself.ps1 -ResourceGroup <ResourceGroupName> -AutomationAccountName <NameofAutomationAccount> -SubscriptionId <SubscriptionId> 
@@ -46,6 +45,10 @@ Param (
     [Parameter(Mandatory = $true)]
     [String] $SubscriptionId
 )
+Import-Module AzureRM.Profile
+Import-Module AzureRM.Automation
+Import-Module AzureRM.Resources
+Import-Module AzureAD
 Connect-AzureRmAccount
 $Subscription = Select-AzureRmSubscription -SubscriptionId $SubscriptionId
 
@@ -73,7 +76,7 @@ $MSGraphAppId = "00000003-0000-0000-c000-000000000000"
 # App ID of AAD Graph:
 $AADGraphAppId = "00000002-0000-0000-c000-000000000000"
 
-$GraphServicePrincipal = Get-AzureADServicePrincipal -Filter "appId eq '$AADGraphAppId'"
+$GraphServicePrincipal = Get-AzureADServicePrincipal -Filter "appId eq '$MSGraphAppId'"
 
 # Step 4:  On the Graph Service Principal, find the App Role "Application.ReadWrite.OwnedBy" that has the permission to update the Application
 $PermissionName = "Application.ReadWrite.OwnedBy"
