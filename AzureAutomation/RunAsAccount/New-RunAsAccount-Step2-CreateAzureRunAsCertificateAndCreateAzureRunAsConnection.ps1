@@ -92,12 +92,12 @@ $PfxCert = New-Object -TypeName System.Security.Cryptography.X509Certificates.X5
 # Assign Contibutor role to ApplciationId if it was not assigned.
 $GetRoleAssignment = Get-AzureRMRoleAssignment -RoleDefinitionName Contributor -ServicePrincipalName $ApplicationId -ErrorAction SilentlyContinue
 if ($GetRoleAssignment -eq $null) {
-    $NewRole = New-AzureRMRoleAssignment -RoleDefinitionName Contributor -ServicePrincipalName $Application.ApplicationId -ErrorAction SilentlyContinue
+    $NewRole = New-AzureRMRoleAssignment -RoleDefinitionName Contributor -ServicePrincipalName $ApplicationId -ErrorAction SilentlyContinue
     $Retries = 0;
     While ($NewRole -eq $null -and $Retries -le 6) {
         Sleep -s 10
-        New-AzureRMRoleAssignment -RoleDefinitionName Contributor -ServicePrincipalName $Application.ApplicationId | Write-Verbose -ErrorAction SilentlyContinue
-        $NewRole = Get-AzureRMRoleAssignment -ServicePrincipalName $Application.ApplicationId -ErrorAction SilentlyContinue
+        New-AzureRMRoleAssignment -RoleDefinitionName Contributor -ServicePrincipalName $ApplicationId | Write-Verbose -ErrorAction SilentlyContinue
+        $NewRole = Get-AzureRMRoleAssignment -ServicePrincipalName $ApplicationId -ErrorAction SilentlyContinue
         $Retries++;
     }
  }
