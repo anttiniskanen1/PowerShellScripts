@@ -8,8 +8,9 @@
    Creates the AzureRunAsCertificate and AzureRunAsConnection for Azure Automation Run As account(Step 2)
 
    Prerequisite:
-   Please execute 'New-RunAsAccount-Step1-CreateSelfSignedCertAndAADApplciation.ps1' and use the ApplciationId and Certificate path 
-   to execute this Step 2 script 'New-RunAsAccount-Step2-CreateAzureRunAsCertificateAndCreateAzureRunAsConnection.ps1'
+   Please execute 'New-RunAsAccount-Step1-CreateSelfSignedCertAndAddCertToExistingAADApplciationAndGrantRBACRoleToServicePrincipal.ps1' 
+   and use the ApplciationId and Certificate path to execute this Step 2 script 
+   'New-RunAsAccount-Step2-CreateAzureRunAsCertificateAndCreateAzureRunAsConnection.ps1'
 
 .EXAMPLE 
    .\New-RunAsAccount-Step2-CreateAzureRunAsCertificateAndCreateAzureRunAsConnection.ps1 -ResourceGroup <ResourceGroupName> -AutomationAccountName <NameofAutomationAccount> -SubscriptionId <SubscriptionId> -ApplicationId <ApplicationId> -SelfSignedCertPathForRunAsAccount <SelfSignedCertPathForRunAsAccount> -SelfSignedCertPlainPassword <StrongPassword>
@@ -17,7 +18,7 @@
 .NOTES
 
     AUTHOR: Azure/OMS Automation Team
-    LASTEDIT: Sep 18, 2018  
+    LASTEDIT: Apr 22, 2018  
 
 #>
 Param (
@@ -61,6 +62,7 @@ function CreateAutomationConnectionAsset ([string] $resourceGroup, [string] $aut
     New-AzureRmAutomationConnection -ResourceGroupName $ResourceGroup -AutomationAccountName $automationAccountName -Name $connectionAssetName -ConnectionTypeName $connectionTypeName -ConnectionFieldValues $connectionFieldValues
 }
 
+# Main code starting here ...
 Import-Module AzureRM.Profile
 Import-Module AzureRM.Resources
 
@@ -88,20 +90,6 @@ else {
 }
 $PfxCert = New-Object -TypeName System.Security.Cryptography.X509Certificates.X509Certificate2 -ArgumentList @($PfxCertPathForRunAsAccount, $PfxCertPlainPasswordForRunAsAccount)
 
-# Requires User Access Administrator or Owner.
-# Assign Contibutor role to ApplciationId if it was not assigned.
-$GetRoleAssignment = Get-AzureRMRoleAssignment -RoleDefinitionName Contributor -ServicePrincipalName $ApplicationId -ErrorAction SilentlyContinue
-if ($GetRoleAssignment -eq $null) {
-    $NewRole = New-AzureRMRoleAssignment -RoleDefinitionName Contributor -ServicePrincipalName $ApplicationId -ErrorAction SilentlyContinue
-    $Retries = 0;
-    While ($NewRole -eq $null -and $Retries -le 6) {
-        Sleep -s 10
-        New-AzureRMRoleAssignment -RoleDefinitionName Contributor -ServicePrincipalName $ApplicationId | Write-Verbose -ErrorAction SilentlyContinue
-        $NewRole = Get-AzureRMRoleAssignment -ServicePrincipalName $ApplicationId -ErrorAction SilentlyContinue
-        $Retries++;
-    }
- }
-
 # Create the Automation certificate asset
 CreateAutomationCertificateAsset $ResourceGroup $AutomationAccountName $CertifcateAssetName $PfxCertPathForRunAsAccount $PfxCertPlainPasswordForRunAsAccount $true
 
@@ -113,3 +101,8 @@ $ConnectionFieldValues = @{"ApplicationId" = $ApplicationId; "TenantId" = $Tenan
 
 # Create an Automation connection asset named AzureRunAsConnection in the Automation account. This connection uses the service principal.
 CreateAutomationConnectionAsset $ResourceGroup $AutomationAccountName $ConnectionAssetName $ConnectionTypeName $ConnectionFieldValues
+
+
+Write-Host
+Write-Host -ForegroundColor green  "Completed the Step2 script"
+Write-Host -ForegroundColor green  "========================== "
