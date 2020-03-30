@@ -5,15 +5,15 @@
     
 .MODULES REQUIRED (PREREQUISITES)
      This script uses the below modules
-         AzureRM.Profile
-         AzureRM.Automation
-         AzureRM.Resources
+         Az.Accounts
+         Az.Automation
+         Az.Resources
          AzureAD
 
      Please use the below command to install the modules (if the modules are not in the local computer)
-         Install-Module -Name AzureRM.Profile
-         Install-Module -Name AzureRM.Automation
-         Install-Module -Name AzureRM.Resources
+         Install-Module -Name Az.Accounts
+         Install-Module -Name Az.Automation
+         Install-Module -Name Az.Resources
          Install-Module -Name AzureAD
 
 .DESCRIPTION
@@ -67,27 +67,27 @@ $confirmation = Read-Host $message
 if ($confirmation -ieq 'N') {
   EXIT(1)
 }
-Import-Module AzureRM.Profile
-Import-Module AzureRM.Automation
-Import-Module AzureRM.Resources
+Import-Module Az.Accounts
+Import-Module Az.Automation
+Import-Module Az.Resources
 Import-Module AzureAD
-Connect-AzureRmAccount
-$subscription = Select-AzureRmSubscription -SubscriptionId $SubscriptionId
+Connect-AzAccount
+$subscription = Select-AzSubscription -SubscriptionId $SubscriptionId
 
-$currentAzureContext = Get-AzureRmContext
+$currentAzureContext = Get-AzContext
 $tenantId = $currentAzureContext.Tenant.Id
 $accountId = $currentAzureContext.Account.Id
 Connect-AzureAD -TenantId $tenantId -AccountId $accountId
 
-$automationAccount = Get-AzureRMAutomationAccount -ResourceGroupName $ResourceGroup -Name $AutomationAccountName
+$automationAccount = Get-AzAutomationAccount -ResourceGroupName $ResourceGroup -Name $AutomationAccountName
 
 # Step 1: Get the Run As Account AAD ApplicationId from automation connectionAsset "AzureRunAsConnection"
 $connectionAssetName = "AzureRunAsConnection"
-$runasAccountConnection = Get-AzureRmAutomationConnection -Name $connectionAssetName `
+$runasAccountConnection = Get-AzAutomationConnection -Name $connectionAssetName `
                           -ResourceGroupName $ResourceGroup  -AutomationAccountName $AutomationAccountName
 [GUID]$runasAccountAADAplicationId=$runasAccountConnection.FieldDefinitionValues['ApplicationId']
 
-$runasAccountAADAplication = Get-AzureRmADApplication -ApplicationId $runasAccountAADAplicationId
+$runasAccountAADAplication = Get-AzADApplication -ApplicationId $runasAccountAADAplicationId
 $runasAccountAADservicePrincipal = Get-AzureADServicePrincipal -Filter "AppId eq '$runasAccountAADAplicationId'"
 
 # Step 2: Grant Owner permission to RunAsAccount AAD Service Principal for RunAsAccount AAD Application
@@ -113,15 +113,15 @@ $updateAzureModulesForAccountRunbookName = "Update-AutomationAzureModulesForAcco
 $updateAzureModulesForAccountRunbookPath = Join-Path $env:TEMP ($updateAzureModulesForAccountRunbookName+".ps1")
 wget -Uri https://raw.githubusercontent.com/Microsoft/AzureAutomation-Account-Modules-Update/master/Update-AutomationAzureModulesForAccount.ps1 `
      -OutFile $updateAzureModulesForAccountRunbookPath
-$importUpdateAzureModulesForAccountRunbook = Import-AzureRmAutomationRunbook -ResourceGroupName $ResourceGroup `
+$importUpdateAzureModulesForAccountRunbook = Import-AzAutomationRunbook -ResourceGroupName $ResourceGroup `
   -AutomationAccountName $AutomationAccountName `
   -Path $updateAzureModulesForAccountRunbookPath -Type PowerShell
-$publishUpdateAzureModulesForAccountRunbook = Publish-AzureRmAutomationRunbook `
+$publishUpdateAzureModulesForAccountRunbook = Publish-AzAutomationRunbook `
    -Name $updateAzureModulesForAccountRunbookName `
    -ResourceGroupName $ResourceGroup `
    -AutomationAccountName $AutomationAccountName
 $runbookParameters = @{"AUTOMATIONACCOUNTNAME"=$AutomationAccountName;"RESOURCEGROUPNAME"=$ResourceGroup; "AZUREENVIRONMENT"=$EnvironmentName}
-$updateModulesJob = Start-AzureRmAutomationRunbook -Name $updateAzureModulesForAccountRunbookName `
+$updateModulesJob = Start-AzAutomationRunbook -Name $updateAzureModulesForAccountRunbookName `
   -ResourceGroupName $ResourceGroup -AutomationAccountName $AutomationAccountName -Parameters $runbookParameters
 
 # Step 5: Import UpdateAutomationRunAsCredential runbook
@@ -129,10 +129,10 @@ $UpdateAutomationRunAsCredentialRunbookName = "Update-AutomationRunAsCredential"
 $UpdateAutomationRunAsCredentialRunbookPath = Join-Path $env:TEMP ($UpdateAutomationRunAsCredentialRunbookName+".ps1")
 wget -Uri https://raw.githubusercontent.com/azureautomation/runbooks/master/Utility/ARM/Update-AutomationRunAsCredential.ps1 `
     -OutFile $UpdateAutomationRunAsCredentialRunbookPath
-$ImportUpdateAutomationRunAsCredentialRunbook = Import-AzureRmAutomationRunbook -ResourceGroupName $ResourceGroup `
+$ImportUpdateAutomationRunAsCredentialRunbook = Import-AzAutomationRunbook -ResourceGroupName $ResourceGroup `
     -AutomationAccountName $AutomationAccountName `
     -Path $UpdateAutomationRunAsCredentialRunbookPath -Type PowerShell
-$PublishUpdateAutomationRunAsCredentialRunbook = Publish-AzureRmAutomationRunbook `
+$PublishUpdateAutomationRunAsCredentialRunbook = Publish-AzAutomationRunbook `
     -Name $UpdateAutomationRunAsCredentialRunbookName `
     -ResourceGroupName $ResourceGroup `
     -AutomationAccountName $AutomationAccountName
@@ -145,7 +145,7 @@ $startDate = $todayDate.AddDays(1)
 if ($ScheduleRenewalInterval -eq "Monthly") 
 {
   $scheduleName = $scheduleName + $ScheduleRenewalInterval
-  $schedule = New-AzureRMAutomationSchedule –AutomationAccountName $AutomationAccountName `
+  $schedule = New-AzAutomationSchedule –AutomationAccountName $AutomationAccountName `
                –Name $scheduleName  -ResourceGroupName $ResourceGroup  `
                -StartTime $startDate -MonthInterval 1 `
                -DaysOfMonth One
@@ -153,18 +153,18 @@ if ($ScheduleRenewalInterval -eq "Monthly")
 elseif ($ScheduleRenewalInterval -eq "Weekly") 
 {
   $scheduleName = $scheduleName + $ScheduleRenewalInterval  
-  $schedule = New-AzureRMAutomationSchedule –AutomationAccountName $AutomationAccountName `
+  $schedule = New-AzAutomationSchedule –AutomationAccountName $AutomationAccountName `
                –Name $scheduleName  -ResourceGroupName $ResourceGroup `
                -StartTime $startDate -DaysOfWeek Sunday `
                -WeekInterval 1  
 }
-$registerdScuedule = Register-AzureRmAutomationScheduledRunbook –AutomationAccountName $AutomationAccountName `
+$registerdScuedule = Register-AzAutomationScheduledRunbook –AutomationAccountName $AutomationAccountName `
  -ResourceGroupName $ResourceGroup -ScheduleName $scheduleName `
  -RunbookName $UpdateAutomationRunAsCredentialRunbookName
 
 # Step 7: Start the UpdateAutomationRunAsCredential onetime
 do {
-   $updateModulesJob = Get-AzureRmAutomationJob -Id $updateModulesJob.JobId -ResourceGroupName $ResourceGroup `
+   $updateModulesJob = Get-AzAutomationJob -Id $updateModulesJob.JobId -ResourceGroupName $ResourceGroup `
                          -AutomationAccountName $AutomationAccountName
    Write-Output ("Updating Azure Modules for automation account..." + "Job Status is " + $updateModulesJob.Status)
    Sleep 30
@@ -173,7 +173,7 @@ do {
 if ($updateModulesJob.Status -eq "Completed")
 {
   Write-Output ("Updated Azure Modules for " + $AutomationAccountName)
-  $updateAutomationRunAsCredentialJob = Start-AzureRmAutomationRunbook `
+  $updateAutomationRunAsCredentialJob = Start-AzAutomationRunbook `
     -Name $UpdateAutomationRunAsCredentialRunbookName `
     -ResourceGroupName $ResourceGroup -AutomationAccountName $AutomationAccountName
   $message = "UpdateAutomationRunAsCredential job started for automation account " + $AutomationAccountName 
