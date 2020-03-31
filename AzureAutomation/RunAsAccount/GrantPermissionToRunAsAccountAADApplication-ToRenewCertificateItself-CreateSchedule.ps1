@@ -72,14 +72,14 @@ Import-Module Az.Automation
 Import-Module Az.Resources
 Import-Module AzureAD
 Connect-AzAccount
-$subscription = Select-AzSubscription -SubscriptionId $SubscriptionId
+Select-AzSubscription -SubscriptionId $SubscriptionId
 
 $currentAzureContext = Get-AzContext
 $tenantId = $currentAzureContext.Tenant.Id
 $accountId = $currentAzureContext.Account.Id
 Connect-AzureAD -TenantId $tenantId -AccountId $accountId
 
-$automationAccount = Get-AzAutomationAccount -ResourceGroupName $ResourceGroup -Name $AutomationAccountName
+Get-AzAutomationAccount -ResourceGroupName $ResourceGroup -Name $AutomationAccountName
 
 # Step 1: Get the Run As Account AAD ApplicationId from automation connectionAsset "AzureRunAsConnection"
 $connectionAssetName = "AzureRunAsConnection"
@@ -103,7 +103,7 @@ $graphServicePrincipal = Get-AzureADServicePrincipal -Filter "appId eq '$AADGrap
 $permissionName = "Application.ReadWrite.OwnedBy"
 $appRole = $graphServicePrincipal.appRoles | Where-Object {$_.Value -eq $permissionName -and $_.AllowedMemberTypes -contains "Application"}
 # Step 3: Assign the "Application.ReadWrite.OwnedBy" App Role to the RunAsAccount AAD Service Principal.
-$appRoleAssignment = New-AzureAdServiceappRoleAssignment `
+New-AzureAdServiceappRoleAssignment `
   -ObjectId $runasAccountAADservicePrincipal.ObjectId `
   -PrincipalId $runasAccountAADservicePrincipal.ObjectId `
   -ResourceId $graphServicePrincipal.ObjectId -Id $appRole.Id
@@ -113,10 +113,10 @@ $updateAzureModulesForAccountRunbookName = "Update-AutomationAzureModulesForAcco
 $updateAzureModulesForAccountRunbookPath = Join-Path $env:TEMP ($updateAzureModulesForAccountRunbookName+".ps1")
 wget -Uri https://raw.githubusercontent.com/Microsoft/AzureAutomation-Account-Modules-Update/master/Update-AutomationAzureModulesForAccount.ps1 `
      -OutFile $updateAzureModulesForAccountRunbookPath
-$importUpdateAzureModulesForAccountRunbook = Import-AzAutomationRunbook -ResourceGroupName $ResourceGroup `
+Import-AzAutomationRunbook -ResourceGroupName $ResourceGroup `
   -AutomationAccountName $AutomationAccountName `
   -Path $updateAzureModulesForAccountRunbookPath -Type PowerShell
-$publishUpdateAzureModulesForAccountRunbook = Publish-AzAutomationRunbook `
+Publish-AzAutomationRunbook `
    -Name $updateAzureModulesForAccountRunbookName `
    -ResourceGroupName $ResourceGroup `
    -AutomationAccountName $AutomationAccountName
@@ -129,10 +129,10 @@ $UpdateAutomationRunAsCredentialRunbookName = "Update-AutomationRunAsCredential"
 $UpdateAutomationRunAsCredentialRunbookPath = Join-Path $env:TEMP ($UpdateAutomationRunAsCredentialRunbookName+".ps1")
 wget -Uri https://raw.githubusercontent.com/azureautomation/runbooks/master/Utility/ARM/Update-AutomationRunAsCredential.ps1 `
     -OutFile $UpdateAutomationRunAsCredentialRunbookPath
-$ImportUpdateAutomationRunAsCredentialRunbook = Import-AzAutomationRunbook -ResourceGroupName $ResourceGroup `
+Import-AzAutomationRunbook -ResourceGroupName $ResourceGroup `
     -AutomationAccountName $AutomationAccountName `
     -Path $UpdateAutomationRunAsCredentialRunbookPath -Type PowerShell
-$PublishUpdateAutomationRunAsCredentialRunbook = Publish-AzAutomationRunbook `
+Publish-AzAutomationRunbook `
     -Name $UpdateAutomationRunAsCredentialRunbookName `
     -ResourceGroupName $ResourceGroup `
     -AutomationAccountName $AutomationAccountName
@@ -145,7 +145,7 @@ $startDate = $todayDate.AddDays(1)
 if ($ScheduleRenewalInterval -eq "Monthly") 
 {
   $scheduleName = $scheduleName + $ScheduleRenewalInterval
-  $schedule = New-AzAutomationSchedule –AutomationAccountName $AutomationAccountName `
+  New-AzAutomationSchedule –AutomationAccountName $AutomationAccountName `
                –Name $scheduleName  -ResourceGroupName $ResourceGroup  `
                -StartTime $startDate -MonthInterval 1 `
                -DaysOfMonth One
@@ -153,12 +153,12 @@ if ($ScheduleRenewalInterval -eq "Monthly")
 elseif ($ScheduleRenewalInterval -eq "Weekly") 
 {
   $scheduleName = $scheduleName + $ScheduleRenewalInterval  
-  $schedule = New-AzAutomationSchedule –AutomationAccountName $AutomationAccountName `
+  New-AzAutomationSchedule –AutomationAccountName $AutomationAccountName `
                –Name $scheduleName  -ResourceGroupName $ResourceGroup `
                -StartTime $startDate -DaysOfWeek Sunday `
                -WeekInterval 1  
 }
-$registerdScuedule = Register-AzAutomationScheduledRunbook –AutomationAccountName $AutomationAccountName `
+Register-AzAutomationScheduledRunbook –AutomationAccountName $AutomationAccountName `
  -ResourceGroupName $ResourceGroup -ScheduleName $scheduleName `
  -RunbookName $UpdateAutomationRunAsCredentialRunbookName
 
