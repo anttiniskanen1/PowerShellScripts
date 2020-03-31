@@ -60,8 +60,9 @@ Param (
     [ValidateSet("AzureCloud", "AzureUSGovernment", "AzureChinaCloud")]
     [string]$EnvironmentName = "AzureCloud"
 )
-$message = "This script will 1) Grant Owner permission to Automation RunAsAccount AAD Service Principal for RunAsAccount AAD Application."
-$message = $message + "2) Assign the 'Application.ReadWrite.OwnedBy' App Role to the RunAsAccount AAD Service Principal."
+$message = "This script will`n"
+$message = $message + "1) Grant Owner permission to Automation RunAsAccount AAD Service Principal for RunAsAccount AAD Application.`n"
+$message = $message + "2) Assign the 'Application.ReadWrite.OwnedBy' App Role to the RunAsAccount AAD Service Principal.`n"
 $message = $message + "Do you want To Proceed? (Y/N):"
 $confirmation = Read-Host $message 
 if ($confirmation -ieq 'N') {
@@ -177,7 +178,7 @@ if ($updateModulesJob.Status -eq "Completed")
   $updateAutomationRunAsCredentialJob = Start-AzAutomationRunbook `
     -Name $UpdateAutomationRunAsCredentialRunbookName `
     -ResourceGroupName $ResourceGroup -AutomationAccountName $AutomationAccountName
-  $message = "Process Automation Job started for automation account."
+  $message = "Process Automation Job started for automation account.`n"
   $message = $message + "Please check the Azure Portal (Automation Accounts - " + $AutomationAccountName + " - Jobs) for job status of Runbook " + $UpdateAutomationRunAsCredentialRunbookName + " with jobid " + $updateAutomationRunAsCredentialJob.JobId.ToString()
   Write-Host -ForegroundColor green $message
 } 
