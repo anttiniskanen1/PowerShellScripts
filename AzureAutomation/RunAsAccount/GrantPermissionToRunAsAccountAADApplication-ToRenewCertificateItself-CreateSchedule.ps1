@@ -177,12 +177,12 @@ if ($updateModulesJob.Status -eq "Completed")
   $updateAutomationRunAsCredentialJob = Start-AzAutomationRunbook `
     -Name $UpdateAutomationRunAsCredentialRunbookName `
     -ResourceGroupName $ResourceGroup -AutomationAccountName $AutomationAccountName
-  $message = "UpdateAutomationRunAsCredential job started for automation account " + $AutomationAccountName 
-  $message = $message + ".Please check AzurePortal for job status of jobid " + $updateAutomationRunAsCredentialJob.JobId.ToString()
+  $message = "Process Automation Job started for automation account."
+  $message = $message + "Please check the Azure Portal (Automation Accounts - " + $AutomationAccountName + " - Jobs) for job status of Runbook " + $UpdateAutomationRunAsCredentialRunbookName + " with jobid " + $updateAutomationRunAsCredentialJob.JobId.ToString()
   Write-Host -ForegroundColor green $message
 } 
 else
 {
-   $message = "Updated Azure Modules job completed with status " + $updateModulesJob.Status + ".Please debug the issue."
+   $message = "Updated Azure Modules job completed with status " + $updateModulesJob.Status + ". Please debug the issue."
    Write-Host -ForegroundColor red $message
 }
