@@ -72,14 +72,14 @@ Import-Module Az.Automation
 Import-Module Az.Resources
 Import-Module AzureAD
 Connect-AzAccount
-Select-AzSubscription -SubscriptionId $SubscriptionId
+Select-AzSubscription -SubscriptionId $SubscriptionId | Out-Null
 
 $currentAzureContext = Get-AzContext
 $tenantId = $currentAzureContext.Tenant.Id
 $accountId = $currentAzureContext.Account.Id
 Connect-AzureAD -TenantId $tenantId -AccountId $accountId
 
-Get-AzAutomationAccount -ResourceGroupName $ResourceGroup -Name $AutomationAccountName
+Get-AzAutomationAccount -ResourceGroupName $ResourceGroup -Name $AutomationAccountName | Out-Null
 
 # Step 1: Get the Run As Account AAD ApplicationId from automation connectionAsset "AzureRunAsConnection"
 $connectionAssetName = "AzureRunAsConnection"
@@ -92,7 +92,7 @@ $runasAccountAADservicePrincipal = Get-AzureADServicePrincipal -Filter "AppId eq
 
 # Step 2: Grant Owner permission to RunAsAccount AAD Service Principal for RunAsAccount AAD Application
 Add-AzureADApplicationOwner -ObjectId $runasAccountAADAplication.ObjectId `
- -RefObjectId $runasAccountAADservicePrincipal.ObjectId
+ -RefObjectId $runasAccountAADservicePrincipal.ObjectId | Out-Null
 
 # Get the Service Principal for the Azure AD Graph
 # App ID of AAD Graph:
@@ -106,7 +106,7 @@ $appRole = $graphServicePrincipal.appRoles | Where-Object {$_.Value -eq $permiss
 New-AzureAdServiceappRoleAssignment `
   -ObjectId $runasAccountAADservicePrincipal.ObjectId `
   -PrincipalId $runasAccountAADservicePrincipal.ObjectId `
-  -ResourceId $graphServicePrincipal.ObjectId -Id $appRole.Id
+  -ResourceId $graphServicePrincipal.ObjectId -Id $appRole.Id | Out-Null
 
 # Step 4: Import Update Azure Modules runbook from github open source and Start Update Azure Modules
 $updateAzureModulesForAccountRunbookName = "Update-AutomationAzureModulesForAccount"
@@ -115,11 +115,11 @@ Invoke-WebRequest -Uri https://raw.githubusercontent.com/Microsoft/AzureAutomati
      -OutFile $updateAzureModulesForAccountRunbookPath
 Import-AzAutomationRunbook -ResourceGroupName $ResourceGroup `
   -AutomationAccountName $AutomationAccountName `
-  -Path $updateAzureModulesForAccountRunbookPath -Type PowerShell
+  -Path $updateAzureModulesForAccountRunbookPath -Type PowerShell | Out-Null
 Publish-AzAutomationRunbook `
    -Name $updateAzureModulesForAccountRunbookName `
    -ResourceGroupName $ResourceGroup `
-   -AutomationAccountName $AutomationAccountName
+   -AutomationAccountName $AutomationAccountName | Out-Null
 $runbookParameters = @{"AUTOMATIONACCOUNTNAME"=$AutomationAccountName;"RESOURCEGROUPNAME"=$ResourceGroup; "AZUREENVIRONMENT"=$EnvironmentName}
 $updateModulesJob = Start-AzAutomationRunbook -Name $updateAzureModulesForAccountRunbookName `
   -ResourceGroupName $ResourceGroup -AutomationAccountName $AutomationAccountName -Parameters $runbookParameters
@@ -131,11 +131,11 @@ Invoke-WebRequest -Uri https://raw.githubusercontent.com/azureautomation/runbook
     -OutFile $UpdateAutomationRunAsCredentialRunbookPath
 Import-AzAutomationRunbook -ResourceGroupName $ResourceGroup `
     -AutomationAccountName $AutomationAccountName `
-    -Path $UpdateAutomationRunAsCredentialRunbookPath -Type PowerShell
+    -Path $UpdateAutomationRunAsCredentialRunbookPath -Type PowerShell | Out-Null
 Publish-AzAutomationRunbook `
     -Name $UpdateAutomationRunAsCredentialRunbookName `
     -ResourceGroupName $ResourceGroup `
-    -AutomationAccountName $AutomationAccountName
+    -AutomationAccountName $AutomationAccountName | Out-Null
 
 # Step 6: Create a weekly or monthly schedule for UpdateAutomationRunAsCredential runbook
 $scheduleName="UpdateAutomationRunAsCredentialSchedule"
@@ -148,7 +148,7 @@ if ($ScheduleRenewalInterval -eq "Monthly")
   New-AzAutomationSchedule –AutomationAccountName $AutomationAccountName `
                –Name $scheduleName  -ResourceGroupName $ResourceGroup  `
                -StartTime $startDate -MonthInterval 1 `
-               -DaysOfMonth One
+               -DaysOfMonth One | Out-Null
 } 
 elseif ($ScheduleRenewalInterval -eq "Weekly") 
 {
@@ -156,11 +156,11 @@ elseif ($ScheduleRenewalInterval -eq "Weekly")
   New-AzAutomationSchedule –AutomationAccountName $AutomationAccountName `
                –Name $scheduleName  -ResourceGroupName $ResourceGroup `
                -StartTime $startDate -DaysOfWeek Sunday `
-               -WeekInterval 1  
+               -WeekInterval 1  | Out-Null
 }
 Register-AzAutomationScheduledRunbook –AutomationAccountName $AutomationAccountName `
  -ResourceGroupName $ResourceGroup -ScheduleName $scheduleName `
- -RunbookName $UpdateAutomationRunAsCredentialRunbookName
+ -RunbookName $UpdateAutomationRunAsCredentialRunbookName | Out-Null
 
 # Step 7: Start the UpdateAutomationRunAsCredential onetime
 $seconds = 30
