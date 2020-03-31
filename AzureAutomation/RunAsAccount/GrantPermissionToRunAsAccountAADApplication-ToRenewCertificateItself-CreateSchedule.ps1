@@ -163,11 +163,12 @@ Register-AzAutomationScheduledRunbook –AutomationAccountName $AutomationAccoun
  -RunbookName $UpdateAutomationRunAsCredentialRunbookName
 
 # Step 7: Start the UpdateAutomationRunAsCredential onetime
+$seconds = 30
 do {
    $updateModulesJob = Get-AzAutomationJob -Id $updateModulesJob.JobId -ResourceGroupName $ResourceGroup `
                          -AutomationAccountName $AutomationAccountName
-   Write-Output ("Updating Azure Modules for automation account..." + "Job Status is " + $updateModulesJob.Status)
-   Start-Sleep -Seconds 5
+   Write-Output ("Updating Azure Modules for automation account. Job Status is " + $updateModulesJob.Status + ". Sleeping for " + $seconds + " seconds...")
+   Start-Sleep -Seconds $seconds
 } while ($updateModulesJob.Status -ne "Completed" -and $updateModulesJob.Status -ne "Failed" -and $updateModulesJob.Status -ne "Suspended")
 
 if ($updateModulesJob.Status -eq "Completed")
