@@ -167,7 +167,7 @@ do {
    $updateModulesJob = Get-AzAutomationJob -Id $updateModulesJob.JobId -ResourceGroupName $ResourceGroup `
                          -AutomationAccountName $AutomationAccountName
    Write-Output ("Updating Azure Modules for automation account..." + "Job Status is " + $updateModulesJob.Status)
-   Sleep 30
+   Start-Sleep -Seconds 5
 } while ($updateModulesJob.Status -ne "Completed" -and $updateModulesJob.Status -ne "Failed" -and $updateModulesJob.Status -ne "Suspended")
 
 if ($updateModulesJob.Status -eq "Completed")
