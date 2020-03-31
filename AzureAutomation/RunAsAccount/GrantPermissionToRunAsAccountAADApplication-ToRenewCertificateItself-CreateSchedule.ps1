@@ -110,7 +110,7 @@ New-AzureAdServiceappRoleAssignment `
 
 # Step 4: Import Update Azure Modules runbook from github open source and Start Update Azure Modules
 $updateAzureModulesForAccountRunbookName = "Update-AutomationAzureModulesForAccount"
-$updateAzureModulesForAccountRunbookPath = Join-Path $env:TEMP ($updateAzureModulesForAccountRunbookName+".ps1")
+$updateAzureModulesForAccountRunbookPath = Join-Path (Get-PSDrive -Name Temp).Root ($updateAzureModulesForAccountRunbookName+".ps1")
 Invoke-WebRequest -Uri https://raw.githubusercontent.com/Microsoft/AzureAutomation-Account-Modules-Update/master/Update-AutomationAzureModulesForAccount.ps1 `
      -OutFile $updateAzureModulesForAccountRunbookPath
 Import-AzAutomationRunbook -ResourceGroupName $ResourceGroup `
@@ -126,7 +126,7 @@ $updateModulesJob = Start-AzAutomationRunbook -Name $updateAzureModulesForAccoun
 
 # Step 5: Import UpdateAutomationRunAsCredential runbook
 $UpdateAutomationRunAsCredentialRunbookName = "Update-AutomationRunAsCredential"
-$UpdateAutomationRunAsCredentialRunbookPath = Join-Path $env:TEMP ($UpdateAutomationRunAsCredentialRunbookName+".ps1")
+$UpdateAutomationRunAsCredentialRunbookPath = Join-Path (Get-PSDrive -Name Temp).Root ($UpdateAutomationRunAsCredentialRunbookName+".ps1")
 Invoke-WebRequest -Uri https://raw.githubusercontent.com/azureautomation/runbooks/master/Utility/ARM/Update-AutomationRunAsCredential.ps1 `
     -OutFile $UpdateAutomationRunAsCredentialRunbookPath
 Import-AzAutomationRunbook -ResourceGroupName $ResourceGroup `
