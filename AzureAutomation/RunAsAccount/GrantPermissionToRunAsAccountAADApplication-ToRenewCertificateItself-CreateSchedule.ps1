@@ -1,7 +1,7 @@
 ﻿<#
 .SYNOPSIS
     This script will grant the required permission to Azure Automation Run As Account AAD Application to 
-    renew the ceritifcate itself and create a schedule for monthly/weekly renewal.
+    renew the certificate itself and create a schedule for monthly/weekly/hourly renewal.
     
 .MODULES REQUIRED (PREREQUISITES)
      This script uses the below modules
@@ -17,7 +17,7 @@
          Install-Module -Name AzureAD
 
 .DESCRIPTION
-    This script will grant the required permission to Azure Automation Run As Account AAD Application to renew the ceritifcate itself.
+    This script will grant the required permission to Azure Automation Run As Account AAD Application to renew the certificate itself.
 
     A. You need to be an Global Administrator / Company Administrator in Azure AD to be able to execute this script.
         Related Doc : https://docs.microsoft.com/en-us/azure/active-directory/users-groups-roles/directory-assign-admin-roles#available-roles
@@ -30,7 +30,7 @@
             (Related link : https://raw.githubusercontent.com/Microsoft/AzureAutomation-Account-Modules-Update/master/Update-AutomationAzureModulesForAccount.ps1)
          5) Import UpdateAutomationRunAsCredential runbook
             (Related link : https://raw.githubusercontent.com/azureautomation/runbooks/master/Utility/ARM/Update-AutomationRunAsCredential.ps1 )
-         6) Create a weekly or monthly schedule for UpdateAutomationRunAsCredential runbook
+         6) Create a weekly, monthly or hourly schedule for UpdateAutomationRunAsCredential runbook
          7) Start the UpdateAutomationRunAsCredential onetime
    
 .USAGE
@@ -53,7 +53,7 @@ Param (
     [String] $SubscriptionId,
 
     [Parameter(Mandatory = $false)]
-    [ValidateSet("Monthly", "Weekly")]
+    [ValidateSet("Monthly", "Weekly", "Hourly")]
     [string]$ScheduleRenewalInterval = "Weekly",
 
     [Parameter(Mandatory = $false)]
@@ -142,7 +142,8 @@ Publish-AzAutomationRunbook `
 $scheduleName="UpdateAutomationRunAsCredentialSchedule"
 $todayDate = get-date -Hour 0 -Minute 00 -Second 00
 $startDate = $todayDate.AddDays(1)
-#Create a Schedule to run $UpdateAutomationRunAsCredentialRunbookName monthly
+
+#Create a Schedule to run $UpdateAutomationRunAsCredentialRunbookName
 if ($ScheduleRenewalInterval -eq "Monthly") 
 {
   $scheduleName = $scheduleName + $ScheduleRenewalInterval
@@ -156,9 +157,17 @@ elseif ($ScheduleRenewalInterval -eq "Weekly")
   $scheduleName = $scheduleName + $ScheduleRenewalInterval  
   New-AzAutomationSchedule –AutomationAccountName $AutomationAccountName `
                –Name $scheduleName  -ResourceGroupName $ResourceGroup `
-               -StartTime $startDate -DaysOfWeek Sunday `
-               -WeekInterval 1  | Out-Null
+               -StartTime $startDate -WeekInterval 1 `
+               -DaysOfWeek Sunday | Out-Null
 }
+elseif ($ScheduleRenewalInterval -eq "Hourly") 
+{
+  $scheduleName = $scheduleName + $ScheduleRenewalInterval  
+  New-AzAutomationSchedule –AutomationAccountName $AutomationAccountName `
+               –Name $scheduleName  -ResourceGroupName $ResourceGroup `
+               -StartTime $startDate -HourInterval 1 | Out-Null `
+}
+
 Register-AzAutomationScheduledRunbook –AutomationAccountName $AutomationAccountName `
  -ResourceGroupName $ResourceGroup -ScheduleName $scheduleName `
  -RunbookName $UpdateAutomationRunAsCredentialRunbookName | Out-Null
