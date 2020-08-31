@@ -52,6 +52,9 @@ Param (
     [Parameter(Mandatory = $true)]
     [String] $SubscriptionId,
 
+    [Parameter(Mandatory = $true)]
+    [String] $AppRoleId,
+
     [Parameter(Mandatory = $false)]
     [ValidateSet("Monthly", "Weekly", "Hourly")]
     [string]$ScheduleRenewalInterval = "Weekly",
@@ -60,6 +63,14 @@ Param (
     [ValidateSet("AzureCloud", "AzureUSGovernment", "AzureChinaCloud")]
     [string]$EnvironmentName = "AzureCloud"
 )
+
+$connectionAssetName = "AzureRunAsConnection"
+$AADGraphAppId = "00000002-0000-0000-c000-000000000000"
+#$permissionName = "Application.ReadWrite.OwnedBy"
+$updateAzureModulesForAccountRunbookName = "Update-AutomationAzureModulesForAccount"
+$UpdateAutomationRunAsCredentialRunbookName = "Update-AutomationRunAsCredential"
+$scheduleName = "UpdateAutomationRunAsCredentialSchedule"
+
 $message = "This script will`n"
 $message = $message + "1) Grant Owner permission to Automation RunAsAccount AAD Service Principal for RunAsAccount AAD Application.`n"
 $message = $message + "2) Assign the 'Application.ReadWrite.OwnedBy' App Role to the RunAsAccount AAD Service Principal.`n"
@@ -68,81 +79,70 @@ $confirmation = Read-Host $message
 if ($confirmation -ieq 'N') {
   EXIT(1)
 }
+
 Import-Module Az.Accounts
 Import-Module Az.Automation
 Import-Module Az.Resources
-Import-Module AzureAD
+# https://github.com/PowerShell/PowerShell/issues/10473
+# https://github.com/PowerShell/PowerShell/issues/11070
+# Could work?
+<#
+Register-PackageSource -Name PoshTestGallery -Location https://www.poshtestgallery.com/api/v2/ -ProviderName PowerShellGet
+Set-PSRepository -Name 'PoshTestGallery' -InstallationPolicy Trusted
+Install-Module -Name AzureAD.Standard.Preview -Repository PoshTestGallery
+Import-Module AzureAD.Standard.Preview
+#>
+# Alternatively
+Import-Module AzureAD -UseWindowsPowerShell
+
+# Step 0: Login etc.
 Connect-AzAccount
 Select-AzSubscription -SubscriptionId $SubscriptionId | Out-Null
-
 $currentAzureContext = Get-AzContext
 $tenantId = $currentAzureContext.Tenant.Id
 $accountId = $currentAzureContext.Account.Id
-Connect-AzureAD -TenantId $tenantId -AccountId $accountId
+# https://github.com/Azure/azure-powershell/issues/11446
+# https://www.reddit.com/r/Office365/comments/5rafe0/connectazuread_leads_to_empty_responses_in_ps1/
+Connect-AzureAD -TenantId $tenantId -AccountId $accountId | Out-Null
 
+# Step 1: Populate variables for the AAD Application and Service Principal
 Get-AzAutomationAccount -ResourceGroupName $ResourceGroup -Name $AutomationAccountName | Out-Null
-
-# Step 1: Get the Run As Account AAD ApplicationId from automation connectionAsset "AzureRunAsConnection"
-$connectionAssetName = "AzureRunAsConnection"
-$runasAccountConnection = Get-AzAutomationConnection -Name $connectionAssetName `
-                          -ResourceGroupName $ResourceGroup  -AutomationAccountName $AutomationAccountName
-[GUID]$runasAccountAADAplicationId=$runasAccountConnection.FieldDefinitionValues['ApplicationId']
-
-$runasAccountAADAplication = Get-AzADApplication -ApplicationId $runasAccountAADAplicationId
-$runasAccountAADservicePrincipal = Get-AzureADServicePrincipal -Filter "AppId eq '$runasAccountAADAplicationId'"
+$runasAccountConnection = Get-AzAutomationConnection -Name $connectionAssetName -ResourceGroupName $ResourceGroup  -AutomationAccountName $AutomationAccountName
+[GUID]$runasAccountAADApplicationId=$runasAccountConnection.FieldDefinitionValues['ApplicationId']
+$runasAccountAADApplication = Get-AzADApplication -ApplicationId $runasAccountAADApplicationId
+$runasAccountAADServicePrincipal = Get-AzADServicePrincipal -ApplicationId $runasAccountAADApplicationId
 
 # Step 2: Grant Owner permission to RunAsAccount AAD Service Principal for RunAsAccount AAD Application
-Add-AzureADApplicationOwner -ObjectId $runasAccountAADAplication.ObjectId `
- -RefObjectId $runasAccountAADservicePrincipal.ObjectId | Out-Null
+Add-AzureADApplicationOwner -ObjectId $runasAccountAADApplication.ObjectId  -RefObjectId $runasAccountAADServicePrincipal.Id | Out-Null
 
+# Step 3: Assign the "Application.ReadWrite.OwnedBy" App Role to the RunAsAccount AAD Service Principal.
 # Get the Service Principal for the Azure AD Graph
-# App ID of AAD Graph:
-$AADGraphAppId = "00000002-0000-0000-c000-000000000000"
 $graphServicePrincipal = Get-AzureADServicePrincipal -Filter "appId eq '$AADGraphAppId'"
 # On the Graph Service Principal, find the App Role "Application.ReadWrite.OwnedBy" 
 # that has the permission to update the Application
-$permissionName = "Application.ReadWrite.OwnedBy"
-$appRole = $graphServicePrincipal.appRoles | Where-Object {$_.Value -eq $permissionName -and $_.AllowedMemberTypes -contains "Application"}
-# Step 3: Assign the "Application.ReadWrite.OwnedBy" App Role to the RunAsAccount AAD Service Principal.
-New-AzureAdServiceappRoleAssignment `
-  -ObjectId $runasAccountAADservicePrincipal.ObjectId `
-  -PrincipalId $runasAccountAADservicePrincipal.ObjectId `
-  -ResourceId $graphServicePrincipal.ObjectId -Id $appRole.Id | Out-Null
+#$appRole = $graphServicePrincipal.appRoles | Where-Object {$_.Value -eq $permissionName -and $_.AllowedMemberTypes -contains "Application"}
+# When using PowerShell 7 and AzureAD module in compatibility mode, the appRoles is a deserialized object which makes it difficult to fetch the correct one
+# Assign the role
+#New-AzureAdServiceappRoleAssignment -ObjectId $runasAccountAADServicePrincipal.Id -PrincipalId $runasAccountAADServicePrincipal.Id -ResourceId $graphServicePrincipal.Id -Id $appRole.Id | Out-Null
+New-AzureAdServiceappRoleAssignment -ObjectId $runasAccountAADServicePrincipal.Id -PrincipalId $runasAccountAADServicePrincipal.Id -ResourceId $graphServicePrincipal.ObjectId -Id $AppRoleId | Out-Null
 
-# Step 4: Import Update Azure Modules runbook from github open source and Start Update Azure Modules
-$updateAzureModulesForAccountRunbookName = "Update-AutomationAzureModulesForAccount"
+# Step 4: Import Update Azure Modules runbook from GitHub and Start Update Azure Modules
 $updateAzureModulesForAccountRunbookPath = Join-Path (Get-PSDrive -Name Temp).Root ($updateAzureModulesForAccountRunbookName+".ps1")
-Invoke-WebRequest -Uri https://raw.githubusercontent.com/Microsoft/AzureAutomation-Account-Modules-Update/master/Update-AutomationAzureModulesForAccount.ps1 `
-     -OutFile $updateAzureModulesForAccountRunbookPath
-Import-AzAutomationRunbook -ResourceGroupName $ResourceGroup `
-  -AutomationAccountName $AutomationAccountName `
-  -Path $updateAzureModulesForAccountRunbookPath -Type PowerShell | Out-Null
-Publish-AzAutomationRunbook `
-   -Name $updateAzureModulesForAccountRunbookName `
-   -ResourceGroupName $ResourceGroup `
-   -AutomationAccountName $AutomationAccountName | Out-Null
+Invoke-WebRequest -Uri https://raw.githubusercontent.com/Microsoft/AzureAutomation-Account-Modules-Update/master/Update-AutomationAzureModulesForAccount.ps1 -OutFile $updateAzureModulesForAccountRunbookPath
+Import-AzAutomationRunbook -ResourceGroupName $ResourceGroup -AutomationAccountName $AutomationAccountName -Path $updateAzureModulesForAccountRunbookPath -Type PowerShell | Out-Null
+Publish-AzAutomationRunbook -Name $updateAzureModulesForAccountRunbookName -ResourceGroupName $ResourceGroup -AutomationAccountName $AutomationAccountName | Out-Null
 $runbookParameters = @{"AUTOMATIONACCOUNTNAME"=$AutomationAccountName;"RESOURCEGROUPNAME"=$ResourceGroup; "AZUREENVIRONMENT"=$EnvironmentName}
-$updateModulesJob = Start-AzAutomationRunbook -Name $updateAzureModulesForAccountRunbookName `
-  -ResourceGroupName $ResourceGroup -AutomationAccountName $AutomationAccountName -Parameters $runbookParameters
+$updateModulesJob = Start-AzAutomationRunbook -Name $updateAzureModulesForAccountRunbookName -ResourceGroupName $ResourceGroup -AutomationAccountName $AutomationAccountName -Parameters $runbookParameters
 
 # Step 5: Import UpdateAutomationRunAsCredential runbook
-$UpdateAutomationRunAsCredentialRunbookName = "Update-AutomationRunAsCredential"
 $UpdateAutomationRunAsCredentialRunbookPath = Join-Path (Get-PSDrive -Name Temp).Root ($UpdateAutomationRunAsCredentialRunbookName+".ps1")
-Invoke-WebRequest -Uri https://raw.githubusercontent.com/azureautomation/runbooks/master/Utility/ARM/Update-AutomationRunAsCredential.ps1 `
-    -OutFile $UpdateAutomationRunAsCredentialRunbookPath
-Import-AzAutomationRunbook -ResourceGroupName $ResourceGroup `
-    -AutomationAccountName $AutomationAccountName `
-    -Path $UpdateAutomationRunAsCredentialRunbookPath -Type PowerShell | Out-Null
-Publish-AzAutomationRunbook `
-    -Name $UpdateAutomationRunAsCredentialRunbookName `
-    -ResourceGroupName $ResourceGroup `
-    -AutomationAccountName $AutomationAccountName | Out-Null
+Invoke-WebRequest -Uri https://raw.githubusercontent.com/azureautomation/runbooks/master/Utility/ARM/Update-AutomationRunAsCredential.ps1 -OutFile $UpdateAutomationRunAsCredentialRunbookPath
+Import-AzAutomationRunbook -ResourceGroupName $ResourceGroup -AutomationAccountName $AutomationAccountName -Path $UpdateAutomationRunAsCredentialRunbookPath -Type PowerShell | Out-Null
+Publish-AzAutomationRunbook -Name $UpdateAutomationRunAsCredentialRunbookName -ResourceGroupName $ResourceGroup -AutomationAccountName $AutomationAccountName | Out-Null
 
-# Step 6: Create a weekly or monthly schedule for UpdateAutomationRunAsCredential runbook
-$scheduleName="UpdateAutomationRunAsCredentialSchedule"
+# Step 6: Create a monthly, weekly or hourly schedule for UpdateAutomationRunAsCredential runbook
 $todayDate = get-date -Hour 0 -Minute 00 -Second 00
 $startDate = $todayDate.AddDays(1)
-
 #Create a Schedule to run $UpdateAutomationRunAsCredentialRunbookName
 if ($ScheduleRenewalInterval -eq "Monthly") 
 {
@@ -167,7 +167,6 @@ elseif ($ScheduleRenewalInterval -eq "Hourly")
                –Name $scheduleName  -ResourceGroupName $ResourceGroup `
                -StartTime $startDate -HourInterval 1 | Out-Null `
 }
-
 Register-AzAutomationScheduledRunbook –AutomationAccountName $AutomationAccountName `
  -ResourceGroupName $ResourceGroup -ScheduleName $scheduleName `
  -RunbookName $UpdateAutomationRunAsCredentialRunbookName | Out-Null
