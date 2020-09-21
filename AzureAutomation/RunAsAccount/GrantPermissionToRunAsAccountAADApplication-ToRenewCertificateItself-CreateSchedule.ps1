@@ -71,13 +71,18 @@ $updateAzureModulesForAccountRunbookName = "Update-AutomationAzureModulesForAcco
 $UpdateAutomationRunAsCredentialRunbookName = "Update-AutomationRunAsCredential"
 $scheduleName = "UpdateAutomationRunAsCredentialSchedule"
 
+if ($PSVersionTable.PSVersion.Major -lt 7){ 
+  Write-Output ("Please run only in PowerShell 7")
+  Exit(1)
+}
+
 $message = "This script will`n"
 $message = $message + "1) Grant Owner permission to Automation RunAsAccount AAD Service Principal for RunAsAccount AAD Application.`n"
 $message = $message + "2) Assign the 'Application.ReadWrite.OwnedBy' App Role to the RunAsAccount AAD Service Principal.`n"
 $message = $message + "Do you want To Proceed? (Y/N):"
 $confirmation = Read-Host $message 
 if ($confirmation -ieq 'N') {
-  EXIT(1)
+  Exit(2)
 }
 
 Import-Module Az.Accounts
