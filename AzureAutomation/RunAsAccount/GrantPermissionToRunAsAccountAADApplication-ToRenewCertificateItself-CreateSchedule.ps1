@@ -193,6 +193,7 @@ Try {
 Catch {
   If ($_.ToString().Contains("Insufficient privileges")) {
     Write-Host ("Insufficient privileges") -ForegroundColor Red
+    Break
   }
   Else {
     Write-Host ("An error occurred assigning the `"Application.ReadWrite.OwnedBy`" App Role to the RunAsAccount AAD Service Principal: " + $_) -ForegroundColor Red
