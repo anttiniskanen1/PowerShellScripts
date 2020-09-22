@@ -214,6 +214,9 @@ Catch {
     Write-Host ("Insufficient privileges") -ForegroundColor Red
     Break
   }
+  Elseif ($_.ToString().Contains("Permission being assigned already exists on the object")) {
+    Write-Host ("App Role is already granted") -ForegroundColor Yellow
+  }
   Else {
     Write-Host ("An error occurred assigning the `"Application.ReadWrite.OwnedBy`" App Role to the RunAsAccount AAD Service Principal: " + $_) -ForegroundColor Red
     Break
