@@ -215,14 +215,13 @@ Catch {
     Break
   }
   Elseif ($_.ToString().Contains("Permission being assigned already exists on the object")) {
-    Write-Host ("App Role is already granted") -ForegroundColor Yellow
+    Write-Host ("App Role is already assigned") -ForegroundColor Yellow
   }
   Else {
     Write-Host ("An error occurred assigning the `"Application.ReadWrite.OwnedBy`" App Role to the RunAsAccount AAD Service Principal: " + $_) -ForegroundColor Red
     Break
   }
 }
-
 
 # Step 4: Import Update Azure Modules runbook from GitHub and Start Update Azure Modules
 Try {
