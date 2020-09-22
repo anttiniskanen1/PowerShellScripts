@@ -70,6 +70,7 @@ $AADGraphAppId = "00000002-0000-0000-c000-000000000000"
 $updateAzureModulesForAccountRunbookName = "Update-AutomationAzureModulesForAccount"
 $UpdateAutomationRunAsCredentialRunbookName = "Update-AutomationRunAsCredential"
 $scheduleName = "UpdateAutomationRunAsCredentialSchedule"
+$adminDirectoryRoleDisplayName = "Company Administrator"
 
 if ($PSVersionTable.PSVersion.Major -lt 7){ 
   Write-Output ("Please run only in PowerShell 7")
@@ -146,6 +147,24 @@ Try {
 Catch {
   Write-Host ("An error occurred connecting to Azure AD: " + $_) -ForegroundColor Red
   Break
+}
+
+# Step 0c: Bail if not Company Administrator
+
+Try {
+  Write-Host ("Checking role")
+  $adminDirectoryRole = Get-AzureADDirectoryRole -ErrorAction Stop | Where-Object {$_.displayName -eq $adminDirectoryRoleDisplayName}
+  $userHasAdminMembership = Get-AzureADUserMembership -ObjectId $accountId | Where-Object {$_.ObjectId -eq $adminDirectoryRole.ObjectId}
+  If ($userHasAdminMembership) {
+    Write-Host "Current user ($accountId) has $adminDirectoryRoleDisplayName role"
+  }
+  Else {
+    Write-Host "Current user ($accountId) does NOT have $adminDirectoryRoleDisplayName role" -ForegroundColor Red
+    Break
+  }
+}
+Catch {
+  Write-Host ("An error occurred checking if the current user has the administrator role: " + $_)
 }
 
 # Step 1: Populate variables for the AAD Application and Service Principal
