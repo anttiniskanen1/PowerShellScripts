@@ -100,103 +100,214 @@ Import-Module AzureAD.Standard.Preview
 # Alternatively
 Import-Module AzureAD -UseWindowsPowerShell
 
-# Step 0: Login etc.
-Connect-AzAccount
-Select-AzSubscription -SubscriptionId $SubscriptionId | Out-Null
-$currentAzureContext = Get-AzContext
-$tenantId = $currentAzureContext.Tenant.Id
-$accountId = $currentAzureContext.Account.Id
+# Step 0a: Login, if necessary, and verify the correct subscription
 # https://github.com/Azure/azure-powershell/issues/11446
 # https://www.reddit.com/r/Office365/comments/5rafe0/connectazuread_leads_to_empty_responses_in_ps1/
-Connect-AzureAD -TenantId $tenantId -AccountId $accountId | Out-Null
+Try {
+  Select-AzSubscription -SubscriptionId $SubscriptionId -ErrorAction Stop | Out-Null
+}
+Catch {
+  Write-Host ("An error occurred selecting the subscription: " + $_)
+  If ($_ -Like "*Account to login*") {
+    Write-Host ("Logging in and selecting the subscription $subscriptionId")
+    Try {
+      Connect-AzAccount -ErrorAction Stop | Out-Null
+      Select-AzSubscription -SubscriptionId $SubscriptionId -ErrorAction Stop | Out-Null
+    }
+    Catch {
+      Write-Host ("An error occurred selecting the subscription: " + $_)
+    }
+  }
+  Else
+  {
+    Write-Host ("Try running Disconnect-AzAccount and checking the tenant and subscription") -ForegroundColor Red
+    Break
+  }
+}
+
+$currentAzureContext = Get-AzContext
+$currentAzureContextName = $currentAzureContext.Name
+$tenantId = $currentAzureContext.Tenant.Id
+$accountId = $currentAzureContext.Account.Id
+
+If (-Not ($currentAzureContextName.Contains($subscriptionId))) {
+  Write-Host "Subscription $subscriptionId is still NOT in current context ($currentAzureContextName)" -ForegroundColor Red
+  Break
+}
+Else {
+  Write-Host "Subscription $subscriptionId is in current context ($currentAzureContextName)"
+}
+
+# Step 0b: Connect to Azure AD
+Try {
+  Write-Host ("Connecting to Azure AD")
+  Connect-AzureAD -TenantId $tenantId -AccountId $accountId -ErrorAction Stop | Out-Null
+}
+Catch {
+  Write-Host ("An error occurred connecting to Azure AD: " + $_) -ForegroundColor Red
+  Break
+}
 
 # Step 1: Populate variables for the AAD Application and Service Principal
-Get-AzAutomationAccount -ResourceGroupName $ResourceGroup -Name $AutomationAccountName | Out-Null
-$runasAccountConnection = Get-AzAutomationConnection -Name $connectionAssetName -ResourceGroupName $ResourceGroup  -AutomationAccountName $AutomationAccountName
-[GUID]$runasAccountAADApplicationId=$runasAccountConnection.FieldDefinitionValues['ApplicationId']
-$runasAccountAADApplication = Get-AzADApplication -ApplicationId $runasAccountAADApplicationId
-$runasAccountAADServicePrincipal = Get-AzADServicePrincipal -ApplicationId $runasAccountAADApplicationId
+Try {
+  Write-Host ("Fetching data for the Azure AD Application and Service Principal")
+  Get-AzAutomationAccount -ResourceGroupName $ResourceGroup -Name $AutomationAccountName -ErrorAction Stop | Out-Null
+  $runasAccountConnection = Get-AzAutomationConnection -Name $connectionAssetName -ResourceGroupName $ResourceGroup  -AutomationAccountName $AutomationAccountName -ErrorAction Stop
+  [GUID]$runasAccountAADApplicationId=$runasAccountConnection.FieldDefinitionValues['ApplicationId']
+  $runasAccountAADApplication = Get-AzADApplication -ApplicationId $runasAccountAADApplicationId -ErrorAction Stop
+  $runasAccountAADServicePrincipal = Get-AzADServicePrincipal -ApplicationId $runasAccountAADApplicationId -ErrorAction Stop
+}
+Catch {
+  Write-Host ("An error occurred fetching data for the Azure AD Application and Service Principal: " + $_) -ForegroundColor Red
+  Break
+}
 
 # Step 2: Grant Owner permission to RunAsAccount AAD Service Principal for RunAsAccount AAD Application
-Add-AzureADApplicationOwner -ObjectId $runasAccountAADApplication.ObjectId  -RefObjectId $runasAccountAADServicePrincipal.Id | Out-Null
+Try {
+  Write-Host ("Granting Owner permission to RunAsAccount Azure AD Service Principal")
+  Add-AzureADApplicationOwner -ObjectId $runasAccountAADApplication.ObjectId  -RefObjectId $runasAccountAADServicePrincipal.Id -ErrorAction Stop | Out-Null
+}
+Catch {
+  If ($_.ToString().Contains("One or more added object references already exist")) {
+    Write-Host ("Permission is already granted") -ForegroundColor Yellow
+  }
+  Else {
+    Write-Host ("An error occurred granting Owner permission to RunAsAccount Azure AD Service Principal: " + $_) -ForegroundColor Red
+    Break
+  }
+}
 
-# Step 3: Assign the "Application.ReadWrite.OwnedBy" App Role to the RunAsAccount AAD Service Principal.
-# Get the Service Principal for the Azure AD Graph
-$graphServicePrincipal = Get-AzureADServicePrincipal -Filter "appId eq '$AADGraphAppId'"
-# On the Graph Service Principal, find the App Role "Application.ReadWrite.OwnedBy" 
-# that has the permission to update the Application
-#$appRole = $graphServicePrincipal.appRoles | Where-Object {$_.Value -eq $permissionName -and $_.AllowedMemberTypes -contains "Application"}
-# When using PowerShell 7 and AzureAD module in compatibility mode, the appRoles is a deserialized object which makes it difficult to fetch the correct one
-# Assign the role
-#New-AzureAdServiceappRoleAssignment -ObjectId $runasAccountAADServicePrincipal.Id -PrincipalId $runasAccountAADServicePrincipal.Id -ResourceId $graphServicePrincipal.Id -Id $appRole.Id | Out-Null
-New-AzureAdServiceappRoleAssignment -ObjectId $runasAccountAADServicePrincipal.Id -PrincipalId $runasAccountAADServicePrincipal.Id -ResourceId $graphServicePrincipal.ObjectId -Id $AppRoleId | Out-Null
+# Step 3: Assign the "Application.ReadWrite.OwnedBy" App Role to the RunAsAccount AAD Service Principal
+Try {
+  Write-Host ("Assigning the `"Application.ReadWrite.OwnedBy`" App Role to the RunAsAccount AAD Service Principal")
+  # Get the Service Principal for the Azure AD Graph
+  $graphServicePrincipal = Get-AzureADServicePrincipal -Filter "appId eq '$AADGraphAppId'"
+  # On the Graph Service Principal, find the App Role "Application.ReadWrite.OwnedBy" 
+  # that has the permission to update the Application
+  #$appRole = $graphServicePrincipal.appRoles | Where-Object {$_.Value -eq $permissionName -and $_.AllowedMemberTypes -contains "Application"}
+  # When using PowerShell 7 and AzureAD module in compatibility mode, the appRoles is a deserialized object which makes it difficult to fetch the correct one
+  # Assign the role
+  #New-AzureAdServiceappRoleAssignment -ObjectId $runasAccountAADServicePrincipal.Id -PrincipalId $runasAccountAADServicePrincipal.Id -ResourceId $graphServicePrincipal.Id -Id $appRole.Id | Out-Null
+  New-AzureAdServiceappRoleAssignment -ObjectId $runasAccountAADServicePrincipal.Id -PrincipalId $runasAccountAADServicePrincipal.Id -ResourceId $graphServicePrincipal.ObjectId -Id $AppRoleId -ErrorAction Stop | Out-Null
+}
+Catch {
+  If ($_.ToString().Contains("Insufficient privileges")) {
+    Write-Host ("Insufficient privileges") -ForegroundColor Red
+  }
+  Else {
+    Write-Host ("An error occurred assigning the `"Application.ReadWrite.OwnedBy`" App Role to the RunAsAccount AAD Service Principal: " + $_) -ForegroundColor Red
+    Break
+  }
+}
+
 
 # Step 4: Import Update Azure Modules runbook from GitHub and Start Update Azure Modules
-$updateAzureModulesForAccountRunbookPath = Join-Path (Get-PSDrive -Name Temp).Root ($updateAzureModulesForAccountRunbookName+".ps1")
-Invoke-WebRequest -Uri https://raw.githubusercontent.com/Microsoft/AzureAutomation-Account-Modules-Update/master/Update-AutomationAzureModulesForAccount.ps1 -OutFile $updateAzureModulesForAccountRunbookPath
-Import-AzAutomationRunbook -ResourceGroupName $ResourceGroup -AutomationAccountName $AutomationAccountName -Path $updateAzureModulesForAccountRunbookPath -Type PowerShell | Out-Null
-Publish-AzAutomationRunbook -Name $updateAzureModulesForAccountRunbookName -ResourceGroupName $ResourceGroup -AutomationAccountName $AutomationAccountName | Out-Null
-$runbookParameters = @{"AUTOMATIONACCOUNTNAME"=$AutomationAccountName;"RESOURCEGROUPNAME"=$ResourceGroup; "AZUREENVIRONMENT"=$EnvironmentName}
-$updateModulesJob = Start-AzAutomationRunbook -Name $updateAzureModulesForAccountRunbookName -ResourceGroupName $ResourceGroup -AutomationAccountName $AutomationAccountName -Parameters $runbookParameters
+Try {
+  Write-Host ("Importing Update Azure Modules runbook from GitHub and starting to update Azure Modules")
+  $updateAzureModulesForAccountRunbookPath = Join-Path (Get-PSDrive -Name Temp).Root ($updateAzureModulesForAccountRunbookName+".ps1")
+  Invoke-WebRequest -Uri https://raw.githubusercontent.com/Microsoft/AzureAutomation-Account-Modules-Update/master/Update-AutomationAzureModulesForAccount.ps1 -OutFile $updateAzureModulesForAccountRunbookPath -ErrorAction Stop
+  Import-AzAutomationRunbook -ResourceGroupName $ResourceGroup -AutomationAccountName $AutomationAccountName -Path $updateAzureModulesForAccountRunbookPath -Type PowerShell -ErrorAction Stop | Out-Null
+  Publish-AzAutomationRunbook -Name $updateAzureModulesForAccountRunbookName -ResourceGroupName $ResourceGroup -AutomationAccountName $AutomationAccountName -ErrorAction Stop | Out-Null
+  $runbookParameters = @{"AUTOMATIONACCOUNTNAME"=$AutomationAccountName;"RESOURCEGROUPNAME"=$ResourceGroup; "AZUREENVIRONMENT"=$EnvironmentName}
+  $updateModulesJob = Start-AzAutomationRunbook -Name $updateAzureModulesForAccountRunbookName -ResourceGroupName $ResourceGroup -AutomationAccountName $AutomationAccountName -Parameters $runbookParameters -ErrorAction Stop
+}
+Catch {
+  If ($_.ToString().Contains("The Runbook already exists")) {
+    Write-Host ("The Update-AutomationAzureModulesForAccount Runbook already exists") -ForegroundColor Yellow
+  }
+  Else {
+    Write-Host ("An error occurred importing Update Azure Modules runbook from GitHub and starting to update Azure Modules: " + $_) -ForegroundColor Red
+    Break
+  }
+}
 
 # Step 5: Import UpdateAutomationRunAsCredential runbook
-$UpdateAutomationRunAsCredentialRunbookPath = Join-Path (Get-PSDrive -Name Temp).Root ($UpdateAutomationRunAsCredentialRunbookName+".ps1")
-Invoke-WebRequest -Uri https://raw.githubusercontent.com/azureautomation/runbooks/master/Utility/ARM/Update-AutomationRunAsCredential.ps1 -OutFile $UpdateAutomationRunAsCredentialRunbookPath
-Import-AzAutomationRunbook -ResourceGroupName $ResourceGroup -AutomationAccountName $AutomationAccountName -Path $UpdateAutomationRunAsCredentialRunbookPath -Type PowerShell | Out-Null
-Publish-AzAutomationRunbook -Name $UpdateAutomationRunAsCredentialRunbookName -ResourceGroupName $ResourceGroup -AutomationAccountName $AutomationAccountName | Out-Null
+Try {
+  Write-Host ("Importing UpdateAutomationRunAsCredential runbook")
+  $UpdateAutomationRunAsCredentialRunbookPath = Join-Path (Get-PSDrive -Name Temp).Root ($UpdateAutomationRunAsCredentialRunbookName+".ps1")
+  Invoke-WebRequest -Uri https://raw.githubusercontent.com/azureautomation/runbooks/master/Utility/ARM/Update-AutomationRunAsCredential.ps1 -OutFile $UpdateAutomationRunAsCredentialRunbookPath -ErrorAction Stop
+  Import-AzAutomationRunbook -ResourceGroupName $ResourceGroup -AutomationAccountName $AutomationAccountName -Path $UpdateAutomationRunAsCredentialRunbookPath -Type PowerShell -ErrorAction Stop | Out-Null
+  Publish-AzAutomationRunbook -Name $UpdateAutomationRunAsCredentialRunbookName -ResourceGroupName $ResourceGroup -AutomationAccountName $AutomationAccountName -ErrorAction Stop | Out-Null
+}
+Catch {
+  If ($_.ToString().Contains("The Runbook already exists")) {
+    Write-Host ("The Update-AutomationRunAsCredential Runbook already exists") -ForegroundColor Yellow
+  }
+  Else {
+    Write-Host ("An error occurred importing UpdateAutomationRunAsCredential runbook: " + $_) -ForegroundColor Red
+    Break
+  }
+}
 
 # Step 6: Create a monthly, weekly or hourly schedule for UpdateAutomationRunAsCredential runbook
-$todayDate = get-date -Hour 0 -Minute 00 -Second 00
-$startDate = $todayDate.AddDays(1)
-#Create a Schedule to run $UpdateAutomationRunAsCredentialRunbookName
-if ($ScheduleRenewalInterval -eq "Monthly") 
-{
-  $scheduleName = $scheduleName + $ScheduleRenewalInterval
-  New-AzAutomationSchedule –AutomationAccountName $AutomationAccountName `
-               –Name $scheduleName  -ResourceGroupName $ResourceGroup  `
-               -StartTime $startDate -MonthInterval 1 `
-               -DaysOfMonth One | Out-Null
-} 
-elseif ($ScheduleRenewalInterval -eq "Weekly") 
-{
-  $scheduleName = $scheduleName + $ScheduleRenewalInterval  
-  New-AzAutomationSchedule –AutomationAccountName $AutomationAccountName `
-               –Name $scheduleName  -ResourceGroupName $ResourceGroup `
-               -StartTime $startDate -WeekInterval 1 `
-               -DaysOfWeek Sunday | Out-Null
+Try {
+  Write-Host ("Creating the schedule for UpdateAutomationRunAsCredential runbook")
+  $todayDate = get-date -Hour 0 -Minute 00 -Second 00
+  $startDate = $todayDate.AddDays(1)
+  # Create a Schedule to run $UpdateAutomationRunAsCredentialRunbookName
+  if ($ScheduleRenewalInterval -eq "Monthly") 
+  {
+    $scheduleName = $scheduleName + $ScheduleRenewalInterval
+    New-AzAutomationSchedule –AutomationAccountName $AutomationAccountName –Name $scheduleName  -ResourceGroupName $ResourceGroup -StartTime $startDate -MonthInterval 1 -DaysOfMonth One -ErrorAction Stop | Out-Null
+  } 
+  elseif ($ScheduleRenewalInterval -eq "Weekly") 
+  {
+    $scheduleName = $scheduleName + $ScheduleRenewalInterval  
+    New-AzAutomationSchedule –AutomationAccountName $AutomationAccountName –Name $scheduleName  -ResourceGroupName $ResourceGroup -StartTime $startDate -WeekInterval 1 -DaysOfWeek Sunday -ErrorAction Stop | Out-Null
+  }
+  elseif ($ScheduleRenewalInterval -eq "Hourly") 
+  {
+    $scheduleName = $scheduleName + $ScheduleRenewalInterval  
+    New-AzAutomationSchedule –AutomationAccountName $AutomationAccountName –Name $scheduleName  -ResourceGroupName $ResourceGroup -StartTime $startDate -HourInterval 1 -ErrorAction Stop | Out-Null `
+  }
+  # Register
+  Register-AzAutomationScheduledRunbook –AutomationAccountName $AutomationAccountName -ResourceGroupName $ResourceGroup -ScheduleName $scheduleName -RunbookName $UpdateAutomationRunAsCredentialRunbookName -ErrorAction Stop | Out-Null
 }
-elseif ($ScheduleRenewalInterval -eq "Hourly") 
-{
-  $scheduleName = $scheduleName + $ScheduleRenewalInterval  
-  New-AzAutomationSchedule –AutomationAccountName $AutomationAccountName `
-               –Name $scheduleName  -ResourceGroupName $ResourceGroup `
-               -StartTime $startDate -HourInterval 1 | Out-Null `
+Catch{
+  If ($_.ToString().Contains("A job schedule for the specified runbook and schedule already exists")) {
+    Write-Host ("A job schedule for the specified runbook and schedule already exists") -ForegroundColor Yellow
+  }
+  Else {
+    Write-Host ("An error occurred creating the schedule for UpdateAutomationRunAsCredential runbook: " + $_) -ForegroundColor Red
+    Break
+  }
 }
-Register-AzAutomationScheduledRunbook –AutomationAccountName $AutomationAccountName `
- -ResourceGroupName $ResourceGroup -ScheduleName $scheduleName `
- -RunbookName $UpdateAutomationRunAsCredentialRunbookName | Out-Null
 
 # Step 7: Start the UpdateAutomationRunAsCredential onetime
-$seconds = 30
-do {
-   $updateModulesJob = Get-AzAutomationJob -Id $updateModulesJob.JobId -ResourceGroupName $ResourceGroup `
-                         -AutomationAccountName $AutomationAccountName
-   Write-Output ("Updating Azure Modules for automation account. Job Status is " + $updateModulesJob.Status + ". Sleeping for " + $seconds + " seconds...")
-   Start-Sleep -Seconds $seconds
-} while ($updateModulesJob.Status -ne "Completed" -and $updateModulesJob.Status -ne "Failed" -and $updateModulesJob.Status -ne "Suspended")
+Try {
+  Write-Host ("Starting the UpdateAutomationRunAsCredential onetime")
+  $seconds = 30
+  # In case there is an already completed update job (meaning this is not the first time the script is run), just roll with it and use the first one as an example
+  $completedUpdateModulesJob = Get-AzAutomationJob -ResourceGroupName $ResourceGroup -AutomationAccountName $AutomationAccountName -RunbookName $updateAzureModulesForAccountRunbookName -Status Completed
+  If ($completedUpdateModulesJob){
+    $updateModulesJob = $completedUpdateModulesJob[0]
+  }
+  Do {
+    $updateModulesJob = Get-AzAutomationJob -Id $updateModulesJob.JobId -ResourceGroupName $ResourceGroup -AutomationAccountName $AutomationAccountName -ErrorAction Stop
+    Write-Output ("Updating Azure Modules for automation account. Job Status is " + $updateModulesJob.Status + ". Sleeping for " + $seconds + " seconds...")
+    Start-Sleep -Seconds $seconds
+  } While ($updateModulesJob.Status -ne "Completed" -and $updateModulesJob.Status -ne "Failed" -and $updateModulesJob.Status -ne "Suspended")
 
-if ($updateModulesJob.Status -eq "Completed")
-{
-  Write-Output ("Updated Azure Modules for " + $AutomationAccountName)
-  $updateAutomationRunAsCredentialJob = Start-AzAutomationRunbook `
-    -Name $UpdateAutomationRunAsCredentialRunbookName `
-    -ResourceGroupName $ResourceGroup -AutomationAccountName $AutomationAccountName
-  $message = "Process Automation Job started for automation account.`n"
-  $message = $message + "Please check the Azure Portal (Automation Accounts - " + $AutomationAccountName + " - Jobs) for job status of Runbook " + $UpdateAutomationRunAsCredentialRunbookName + " with jobid " + $updateAutomationRunAsCredentialJob.JobId.ToString()
-  Write-Host -ForegroundColor green $message
-} 
-else
-{
-   $message = "Updated Azure Modules job completed with status " + $updateModulesJob.Status + ". Please debug the issue."
-   Write-Host -ForegroundColor red $message
+  if ($updateModulesJob.Status -eq "Completed")
+  {
+    Write-Output ("Updated Azure Modules for " + $AutomationAccountName)
+    $updateAutomationRunAsCredentialJob = Start-AzAutomationRunbook -Name $UpdateAutomationRunAsCredentialRunbookName -ResourceGroupName $ResourceGroup -AutomationAccountName $AutomationAccountName -ErrorAction Stop
+    $message = "Process Automation Job started for automation account.`n"
+    $message = $message + "Please check the Azure Portal (Automation Accounts - " + $AutomationAccountName + " - Jobs) for job status of Runbook " + $UpdateAutomationRunAsCredentialRunbookName + " with jobid " + $updateAutomationRunAsCredentialJob.JobId.ToString()
+    Write-Host ($message) -ForegroundColor Green
+  } 
+  else
+  {
+    $message = "Updated Azure Modules job completed with status " + $updateModulesJob.Status + ". Please debug the issue."
+    Write-Host ($message) -ForegroundColor Red
+  }
+}
+Catch {
+  If ($_.ToString().Contains("A job schedule for the specified runbook and schedule already exists")) {
+    Write-Host ("A job schedule for the specified runbook and schedule already exists") -ForegroundColor Yellow
+  }
+  Else {
+    Write-Host ("An error occurred starting the UpdateAutomationRunAsCredential onetime: " + $_) -ForegroundColor Red
+    Break
+  }
 }
